@@ -1,0 +1,9 @@
+[submodule "sam3"]
+	path = sam3
+	url = org-16943930@github.com:facebookresearch/sam3.git
+[submodule "vggt"]
+	path = vggt
+	url = org-16943930@github.com:facebookresearch/vggt.git
+[submodule "sam-3d-objects"]
+	path = sam-3d-objects
+	url = org-16943930@github.com:facebookresearch/sam-3d-objects.git

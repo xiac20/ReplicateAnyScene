@@ -1,0 +1,11 @@
+{
+    "picture": "attached to wall",
+    "door": "embedded in wall",
+    "trash can": "supported by floor",
+    "chair": "supported by floor",
+    "table": "supported by floor",
+    "corkboard":"attached to wall",
+    "window": "embedded in wall",
+    "bag": "supported by other objects",
+    "bench":"supported by floor"
+}
