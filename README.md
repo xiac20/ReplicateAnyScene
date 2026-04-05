@@ -44,6 +44,7 @@ cd ../vggt
 pip install -e .
 pip install transformers==4.57.3
 cd ..
+pip install colorcet
 ```
 
 **Download required models.**

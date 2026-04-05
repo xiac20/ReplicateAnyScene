@@ -6,10 +6,11 @@ import numpy as np
 import json
 
 from src.models import load_vggt_model, load_sam3_image_model, load_sam3_video_model, unload_model
-from src.utils import load_video_frames
+from src.utils import load_video_frames, vis_instance_masks
 from src.geometry_utils import align_to_room_coordinate_system, align_vggt_predictions, compute_surface_area_from_pointmap
 from src.vggt_predict import vggt_predict
 from src.object_segmentation import segment_wall_and_floor, segment_and_track
+from src.sg_deduplication import self_category_deduplicate, cross_category_deduplicate
 
 def main(args):
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -56,20 +57,20 @@ def main(args):
         )
     )
     session_id = response["session_id"]
+
     # for each category, segment and track the instances in the video
-    category_instance_masks = {}
+    all_masks = {}
     for category in detected_categories:
         print(f"Segmenting and tracking category: {category}")
         category_masks = segment_and_track(category, sam3_video_model, session_id)
-        # compute 3D surface area of instance masks
-        for instance_masks in category_masks:
-            for frame_info in instance_masks:
-                frame_id = frame_info['frame_id']
-                mask = frame_info['mask']
-                world_points = vggt_prediction_results['world_points'][frame_id]
-                area = compute_surface_area_from_pointmap(world_points, mask)
-                frame_info['area'] = area
-        category_instance_masks[category] = category_masks
+        # here we deduplicate inside each category
+        deduplicated_category_masks = self_category_deduplicate(category_masks, vggt_prediction_results['world_points'], vggt_prediction_results['world_points_conf'])
+        all_masks[category] = deduplicated_category_masks
+    # here we deduplicate inside all objects
+    deduplicated_all_masks = cross_category_deduplicate(all_masks, vggt_prediction_results['world_points'], vggt_prediction_results['world_points_conf'])
+    
+    # vis the duplicated results
+    vis_instance_masks(vggt_prediction_results['colors'], deduplicated_all_masks, os.path.join(args.output_path, 'instance_masks.mp4'))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="ReplicateAnyScene pipeline")
