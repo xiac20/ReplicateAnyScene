@@ -3,6 +3,7 @@ import os
 import re
 import numpy as np
 import tempfile
+import subprocess
 import colorcet as cc
 import matplotlib.colors as mcolors
 import cv2
@@ -27,7 +28,12 @@ def load_video_frames(video_path, max_frames):
     else:
         # Use ffmpeg to extract frames from the video in a temporary directory
         with tempfile.TemporaryDirectory() as temp_dir:
-            os.system(f"ffmpeg -i {video_path} -vsync 0 {temp_dir}/frame_%04d.png")
+            subprocess.run(
+                ["ffmpeg", "-i", video_path, "-vsync", "0", os.path.join(temp_dir, "frame_%04d.png")],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=True,
+            )
             return load_video_frames(temp_dir, max_frames)
         
 def get_glasbey_colors(n):
@@ -92,5 +98,10 @@ def vis_instance_masks(video_frames, all_masks, output_path):
     with tempfile.TemporaryDirectory() as temp_dir:
         for frame_id, image in enumerate(frames_to_show):
             cv2.imwrite(os.path.join(temp_dir, f'{frame_id + 1}.png'), image)
-        os.system(f"ffmpeg -f image2 -i {os.path.join(temp_dir, '%d.png')} {output_path}")
+        subprocess.run(
+            ["ffmpeg", "-y", "-f", "image2", "-i", os.path.join(temp_dir, "%d.png"), output_path],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=True,
+        )
         

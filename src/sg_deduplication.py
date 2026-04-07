@@ -172,10 +172,6 @@ def self_category_deduplicate(category_masks, world_points, world_points_conf, c
     print(f"  -> Reduced {len(category_masks)} instances to {len(deduplicated_category_masks)} instances.")
     return deduplicated_category_masks
 
-import numpy as np
-import open3d as o3d
-# 假设 UnionFind, get_overlap_ratio, compute_surface_area_from_pointmap 已在环境中定义
-
 def cross_category_deduplicate(all_masks, world_points, world_points_conf, conf_k=50, overlap_thre=0.5):
     '''
     Deduplication across all categories
@@ -264,13 +260,12 @@ def cross_category_deduplicate(all_masks, world_points, world_points_conf, conf_
         root = uf.find(i)
         if root not in final_groups: 
             final_groups[root] = []
-        final_groups[root].append(i) # 存储索引
+        final_groups[root].append(i) 
         
     final_objects = []
     
     for group_indices in final_groups.values():
         if len(group_indices) == 1:
-            # 无冲突，直接添加
             final_objects.append(all_candidates[group_indices[0]])
         else:
             target_idx = group_indices[0]
@@ -306,7 +301,6 @@ def cross_category_deduplicate(all_masks, world_points, world_points_conf, conf_
                     msk = frame_data['mask']
                     if fid not in merged_masks_dict:
                         merged_masks_dict[fid] = np.zeros_like(msk)
-                    # 逻辑或合并
                     merged_masks_dict[fid] = np.logical_or(merged_masks_dict[fid], msk)
             
             merged_masks_list = []
@@ -331,5 +325,6 @@ def cross_category_deduplicate(all_masks, world_points, world_points_conf, conf_
             deduplicated_all_masks[cat] = []
         deduplicated_all_masks[cat].append(obj["original_masks"])
 
-    print(f"  -> Reduced total instances to {len(final_objects)} global objects.")
-    return deduplicated_all_masks       
+    filtered_object_count = sum(len(instances) for instances in deduplicated_all_masks.values())
+    print(f"  -> Reduced total instances to {filtered_object_count} global objects.")
+    return deduplicated_all_masks

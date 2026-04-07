@@ -1,14 +1,5 @@
 from html import parser
-import os
-import re
-from matplotlib.pylab import f
-import trimesh
-import torch
-import argparse
-import random
 import numpy as np
-import cv2
-import pdb
 from PIL import Image
 
 def segment_wall_and_floor(images, sam3_image_model):

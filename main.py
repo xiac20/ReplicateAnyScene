@@ -1,16 +1,19 @@
-import argparse
 import os
+os.environ["LIDRA_SKIP_INIT"] = "true"
+import argparse
 import torch
 import cv2
 import numpy as np
 import json
+import sys
 
 from src.models import load_vggt_model, load_sam3_image_model, load_sam3_video_model, unload_model
 from src.utils import load_video_frames, vis_instance_masks
-from src.geometry_utils import align_to_room_coordinate_system, align_vggt_predictions, compute_surface_area_from_pointmap
+from src.geometry_utils import align_to_room_coordinate_system, align_vggt_predictions, get_optimal_view_frame_id
 from src.vggt_predict import vggt_predict
 from src.object_segmentation import segment_wall_and_floor, segment_and_track
 from src.sg_deduplication import self_category_deduplicate, cross_category_deduplicate
+from src.instance_generation import generate_3d_asset_in_subprocess, generate_3d_asset
 
 def main(args):
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -27,7 +30,7 @@ def main(args):
     print(f"Loaded {len(frames)} frames for processing.")
     vggt_model = load_vggt_model().to(device)
     vggt_prediction_results = vggt_predict(frames, vggt_model)
-    unload_model(vggt_model)
+    vggt_model = unload_model(vggt_model)
 
     # Use sam3 to predict floor and wall to align the scene to room_coordinate_system
     sam3_image_model = load_sam3_image_model()
@@ -46,7 +49,7 @@ def main(args):
         cv2.imwrite(os.path.join(args.output_path, 'depth', f"{i}.png"), (depth * 1000).astype(np.uint16)) # scale 1000
     for i, extrinsic in enumerate(vggt_prediction_results['extrinsics']):
         np.savetxt(os.path.join(args.output_path, 'extrinsics', f"{i}.txt"), extrinsic)
-    unload_model(sam3_image_model)
+    sam3_image_model = unload_model(sam3_image_model)
     # load sam3 video model and video frames
     sam3_video_model = load_sam3_video_model()
     video_path = os.path.join(args.output_path, 'color')
@@ -71,6 +74,60 @@ def main(args):
     
     # vis the duplicated results
     vis_instance_masks(vggt_prediction_results['colors'], deduplicated_all_masks, os.path.join(args.output_path, 'instance_masks.mp4'))
+    sam3_video_model = unload_model(sam3_video_model)
+
+    # stage 3: Optimal-view asset generation
+    # get optimal view frame id for each instance
+    all_optimal_frame_ids = {}
+    for category, category_masks in deduplicated_all_masks.items():
+        all_optimal_frame_ids[category] = []
+        for instance_masks in category_masks:
+            optimal_frame_id = get_optimal_view_frame_id(vggt_prediction_results['world_points'], instance_masks)
+            all_optimal_frame_ids[category].append(optimal_frame_id)
+
+    # generate 3d assets for all instances in one SAM3D subprocess
+
+    # If you meet ERROR: "RuntimeError: all_profile_res.empty() assert faild. can't find suitable algorithm for 0", use the code commented below.
+    
+    # sys.path.append('./sam-3d-objects/notebook')
+    # from inference import Inference
+    # inference = Inference(config_file="./models/SAM3D/checkpoints/pipeline.yaml", compile=False)
+    # all_instances = {}
+    # for category, category_masks in deduplicated_all_masks.items():
+    #     all_instances[category] = []
+    #     for instance_masks, optimal_frame_id in zip(category_masks, all_optimal_frame_ids[category]):
+    #         image = vggt_prediction_results['colors'][optimal_frame_id]
+    #         mask = next(im["mask"] for im in instance_masks if im["frame_id"] == optimal_frame_id)
+    #         pointmap = vggt_prediction_results['world_points'][optimal_frame_id]
+    #         extrinsic = vggt_prediction_results['extrinsics'][optimal_frame_id]
+    #         print(f"Generating 3D asset for category: {category}, optimal frame id: {optimal_frame_id}")
+    #         print(f"Image shape: {image.shape}, Mask shape: {mask.shape}, Pointmap shape: {pointmap.shape}, Extrinsic shape: {extrinsic.shape}")
+    #         print(f"Image dtype: {image.dtype}, Mask dtype: {mask.dtype}, Pointmap dtype: {pointmap.dtype}, Extrinsic dtype: {extrinsic.dtype}")
+    #         print(f"pixel num in mask: {(mask > 0).sum()}")
+    #         try:
+    #             instance_result = generate_3d_asset(image, mask, pointmap, extrinsic, inference)
+    #         except Exception as e:
+    #             print(f"Error occurred while generating 3D asset for category: {category}, optimal frame id: {optimal_frame_id}")
+    #             print(f"Error: {e}")
+    #             continue
+    #         all_instances[category].append(instance_result)
+
+    # We process in a subprocess to avoid strange CUDA error, but it may take a bit longer time.
+
+    all_instances = generate_3d_asset_in_subprocess(
+        deduplicated_all_masks,
+        all_optimal_frame_ids,
+        vggt_prediction_results['colors'],
+        vggt_prediction_results['world_points'],
+        vggt_prediction_results['extrinsics'],
+    )
+
+    # stage 4: Iterative Visual-Spatial Alignment
+    # This part of the code is not publicly available for now.
+    all_aligned_instances = all_instances
+
+    # stage 5: Semantic-Aware Scene Refinement
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="ReplicateAnyScene pipeline")

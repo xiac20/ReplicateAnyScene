@@ -3,11 +3,7 @@ import trimesh
 import matplotlib
 from scipy.spatial import Delaunay
 
-def compute_surface_area_from_pointmap(
-    pointmap: np.ndarray,
-    mask: np.ndarray,
-    max_triangle_size: float = 2e-4,
-) -> float:
+def compute_surface_area_from_pointmap(pointmap, mask, max_triangle_size = 2e-4):
     """
     Compute the surface area of an object given its pointmap and mask using Delaunay triangulation.
     
@@ -307,3 +303,24 @@ def align_vggt_predictions(predictions, R, t):
     # update pcd
     predictions['point_cloud_data'].apply_transform(np.vstack([np.hstack([R, t.reshape(3, 1)]), [0, 0, 0, 1]]))
     return predictions
+
+def get_optimal_view_frame_id(world_points, instance_masks):
+    '''
+    Get the optimal view frame id for each instance based on 3D surface area
+    Args:
+        world_points: numpy array of shape (T, H, W, 3) representing the 3D coordinates of each pixel in each frame.
+        instance_masks: list of dictionaries containing 'frame_id' and 'mask' for each instance.
+    Returns:
+        A integer representing the optimal view frame id for the instance.
+    '''
+    optimal_frame_id = -1
+    max_area = 0
+    for instance_mask in instance_masks:
+        frame_id = instance_mask['frame_id']
+        mask = instance_mask['mask']
+        pointmap = world_points[frame_id]  # shape (H, W, 3)
+        area = compute_surface_area_from_pointmap(pointmap, mask)
+        if area > max_area:
+            max_area = area
+            optimal_frame_id = frame_id
+    return optimal_frame_id
