@@ -324,3 +324,85 @@ def get_optimal_view_frame_id(world_points, instance_masks):
             max_area = area
             optimal_frame_id = frame_id
     return optimal_frame_id
+
+def get_walls_info(world_points, wall_masks):
+    '''
+    Get the wall info from the world points and wall masks in the aligned room coordinate system. 
+    Args:
+        world_points: numpy array of shape (T, H, W, 3) representing the 3D coordinates of each pixel in each frame.
+        wall_masks: list of dictionaries containing 'frame_id' and 'mask' for detected walls.
+    Returns:   A list of dictionaries containing wall info, each dictionary contains:
+        {
+            'axis': 'x' or 'y', the axis of the wall,
+            'position': float, the position of the wall along the axis,
+            'span': tuple of two floats, the start and end position of the wall along the other axis
+        }
+    '''
+    wall_candidates = []
+    for wall_mask in wall_masks:
+        frame_id = wall_mask['frame_id']
+        mask = wall_mask['mask']
+        pointmap = world_points[frame_id]  # shape (H, W, 3)
+        plane_info = get_plane_info(pointmap, mask)
+        normal = plane_info['normal']
+        mean_distance = plane_info['mean_distance']
+        # filter out the wall planes with large mean distance (indicating poor plane fitting and likely wrong segmentation)
+        if mean_distance > 0.1:
+            continue
+        # We only consider the walls that are roughly vertical (normal vector close to x or y axis)
+        if np.abs(np.dot(normal, np.array([1, 0, 0]))) > np.cos(np.radians(10)):
+            axis = 'x'
+            position = np.mean(pointmap[mask][:, 0])
+            other_axis_coords = pointmap[mask][:, 1]
+            span = (np.min(other_axis_coords), np.max(other_axis_coords))
+        elif np.abs(np.dot(normal, np.array([0, 1, 0]))) > np.cos(np.radians(10)):
+            axis = 'y'
+            position = np.mean(pointmap[mask][:, 1])
+            other_axis_coords = pointmap[mask][:, 0]
+            span = (np.min(other_axis_coords), np.max(other_axis_coords))
+        else:
+            continue
+        wall_candidates.append({
+            'axis': axis,
+            'position': float(position),
+            'span': (float(span[0]), float(span[1])),
+        })
+
+    # Cluster the detected walls based on their axis and position to get the final wall info
+    if len(wall_candidates) == 0:
+        return []
+
+    all_points = world_points.reshape(-1, 3)
+    x_threshold = (np.max(all_points[:, 0]) - np.min(all_points[:, 0])) / 10.0
+    y_threshold = (np.max(all_points[:, 1]) - np.min(all_points[:, 1])) / 10.0
+
+    clustered_walls = []
+    for axis in ('x', 'y'):
+        axis_candidates = [w for w in wall_candidates if w['axis'] == axis]
+        if len(axis_candidates) == 0:
+            continue
+
+        axis_candidates.sort(key=lambda w: w['position'])
+        threshold = x_threshold if axis == 'x' else y_threshold
+
+        clusters = []
+        current_cluster = [axis_candidates[0]]
+        for candidate in axis_candidates[1:]:
+            if abs(candidate['position'] - current_cluster[-1]['position']) < threshold:
+                current_cluster.append(candidate)
+            else:
+                clusters.append(current_cluster)
+                current_cluster = [candidate]
+        clusters.append(current_cluster)
+
+        for cluster in clusters:
+            position = float(np.mean([w['position'] for w in cluster]))
+            span_start = float(np.min([w['span'][0] for w in cluster]))
+            span_end = float(np.max([w['span'][1] for w in cluster]))
+            clustered_walls.append({
+                'axis': axis,
+                'position': position,
+                'span': (span_start, span_end),
+            })
+
+    return clustered_walls

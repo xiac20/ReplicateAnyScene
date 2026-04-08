@@ -5,15 +5,17 @@ import torch
 import cv2
 import numpy as np
 import json
+import trimesh
 import sys
 
 from src.models import load_vggt_model, load_sam3_image_model, load_sam3_video_model, unload_model
 from src.utils import load_video_frames, vis_instance_masks
-from src.geometry_utils import align_to_room_coordinate_system, align_vggt_predictions, get_optimal_view_frame_id
+from src.geometry_utils import align_to_room_coordinate_system, align_vggt_predictions, get_optimal_view_frame_id, get_walls_info
 from src.vggt_predict import vggt_predict
 from src.object_segmentation import segment_wall_and_floor, segment_and_track
 from src.sg_deduplication import self_category_deduplicate, cross_category_deduplicate
 from src.instance_generation import generate_3d_asset_in_subprocess, generate_3d_asset
+from src.sp_refinement import refine_supported_by_floor_object, refine_attached_to_wall_object, refine_embedded_in_wall_object
 
 def main(args):
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -124,9 +126,36 @@ def main(args):
 
     # stage 4: Iterative Visual-Spatial Alignment
     # This part of the code is not publicly available for now.
-    all_aligned_instances = all_instances
 
     # stage 5: Semantic-Aware Scene Refinement
+    walls_info = get_walls_info(vggt_prediction_results['world_points'], wall_masks)
+
+    # We only process the "supported by floor", "attached to wall" and "embedded in wall" relationships in the current version
+    for category, category_instances in all_instances.items():
+        relationship = categories_and_relations[category]
+        for instance_id, (optimal_frame_id, instance_info) in enumerate(zip(all_optimal_frame_ids[category], category_instances)):
+            print(f"Refining {category}: {instance_id} with relationship: {relationship}")
+            if relationship == "supported_by_floor":
+                instance_info = refine_supported_by_floor_object(instance_info)
+            elif relationship == "embedded_in_wall":
+                instance_info = refine_embedded_in_wall_object(instance_info, walls_info)
+            elif relationship == "attached_to_wall":
+                extrinsic = vggt_prediction_results['extrinsics'][optimal_frame_id]
+                camera_pos = - extrinsic[:3,:3].T @ extrinsic[:3,3]
+                instance_info = refine_attached_to_wall_object(instance_info, walls_info, camera_pos)
+            else:
+                continue
+
+    # save the final instance results
+    scene = trimesh.Scene()
+    for category, category_instances in all_instances.items():
+        for i, instance_info in enumerate(category_instances):
+            mesh = instance_info['original_mesh']
+            transformed_mesh = mesh.copy()
+            transformed_mesh.apply_transform(instance_info['T'])
+            scene.add_geometry(transformed_mesh, node_name=f"{category}_{i}")
+
+    scene.export(os.path.join(args.output_path, "final_scene.glb"))
 
 
 if __name__ == "__main__":
