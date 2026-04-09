@@ -98,6 +98,7 @@ pip install colorcet
 4. **Download required models.**
 
 ```bash
+mkdir models
 hf download facebook/VGGT-1B  --local-dir models/VGGT
 hf download facebook/sam3 --local-dir models/SAM3
 hf download facebook/sam-3d-objects --local-dir models/SAM3D
