@@ -20,13 +20,15 @@ from src.sp_refinement import refine_supported_by_floor_object, refine_attached_
 def main(args):
     device = "cuda" if torch.cuda.is_available() else "cpu"
     # Stage 1: Progressive object discovery
-    # This part of the code is not publicly available for now. You can refer to ./assets/example/hallway.json to manually specify object categories for the scene.
+    # The code of this stage is not publicly available for now. 
+    # You can refer to ./assets/example/hallway.json to manually specify object categories for the scene.
     with open(args.category_path, 'r') as f:
         categories_and_relations = json.load(f)
     detected_categories = list(categories_and_relations.keys())
     print(f"Detected categories: {detected_categories}")
 
     # Stage 2: Spatial-Guided Visual Deduplication
+
     # Use vggt to predict 3d attributes
     frames = load_video_frames(args.input_video, args.max_frames).to(device)
     print(f"Loaded {len(frames)} frames for processing.")
@@ -79,6 +81,7 @@ def main(args):
     sam3_video_model = unload_model(sam3_video_model)
 
     # stage 3: Optimal-view asset generation
+
     # get optimal view frame id for each instance
     all_optimal_frame_ids = {}
     for category, category_masks in deduplicated_all_masks.items():
@@ -128,6 +131,10 @@ def main(args):
     # This part of the code is not publicly available for now.
 
     # stage 5: Semantic-Aware Scene Refinement
+    # The code for this stage is not publicly available for now.
+    # We provide the code for refining objects in "supported by floor", "attached to wall" and "embedded in wall" relationships.
+    # You can refer to ./assets/example/hallway.json for the relationships of different categories in the scene.
+
     walls_info = get_walls_info(vggt_prediction_results['world_points'], wall_masks)
 
     # We only process the "supported by floor", "attached to wall" and "embedded in wall" relationships in the current version
@@ -146,7 +153,7 @@ def main(args):
             else:
                 continue
 
-    # save the final instance results
+    # save the final results
     scene = trimesh.Scene()
     for category, category_instances in all_instances.items():
         for i, instance_info in enumerate(category_instances):
@@ -154,14 +161,15 @@ def main(args):
             transformed_mesh = mesh.copy()
             transformed_mesh.apply_transform(instance_info['T'])
             scene.add_geometry(transformed_mesh, node_name=f"{category}_{i}")
-
+    # z-up to y-up
+    scene.apply_transform(np.array([[1, 0, 0, 0],[0, 0, 1, 0],[0, -1, 0, 0],[0, 0, 0, 1]]))
     scene.export(os.path.join(args.output_path, "final_scene.glb"))
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="ReplicateAnyScene pipeline")
     parser.add_argument("--input_video", type=str, default='./assets/example/hallway.mp4', help="Path to input video file or directory of images")
-    parser.add_argument("--output_path", type=str, default='./results/hallway', help="Directory to save output results")
+    parser.add_argument("--output_path", type=str, default='./outputs/hallway', help="Directory to save output results")
     parser.add_argument("--category_path", type=str, default='./assets/example/hallway.json', help="path to category and relation json")
     parser.add_argument("--max_frames", type=int, default=160, help="Maximum number of frames to process from the video")
     args = parser.parse_args()
