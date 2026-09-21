@@ -1,3 +1,5 @@
+
+
 <div align="center">
 
 # ✨ReplicateAnyScene: Zero-Shot Video-to-3D Composition via Textual-Visual-Spatial Alignment✨
@@ -118,7 +120,7 @@ python main.py --input_video ./assets/example/hallway.mp4 --output_path ./output
 
 ## 🔗Acknowledgement
 
-We are thankful for the following great works when implementing SimRecon:
+We are thankful for the following great works when implementing ReplicateAnyScene:
 
 - [SimRecon](https://github.com/xiac20/SimRecon), [Spatial-MLLM](https://github.com/THU-SI/Spatial-MLLM), [SAM3](https://github.com/facebookresearch/sam3), [SAM3D](https://github.com/facebookresearch/sam-3d-objects), [VGGT](https://github.com/facebookresearch/vggt), [Qwen3VL](https://github.com/QwenLM/Qwen3-VL), [MASt3R](https://github.com/naver/mast3r)
 
